@@ -18,6 +18,7 @@
 #define SIGMIN SIGUSR0
 #define SIGMAX SIGINT
 
+#define _NSIG 11
 #define sigmask(signo) (1 << (signo))
 
 typedef uint64 sigset_t;

@@ -115,8 +115,10 @@ void handler5(int signo, siginfo_t* info, void* ctx2) {
     nonreentrace = 1;
     sleep(5);
     sleep(5);
-    if (handler5_cnt < 5)
+    if (handler5_cnt < 5){
+        fprintf(1, "handler5: sending SIGUSR0 to self\n");
         sigkill(getpid(), SIGUSR0, 0);
+    }
     sleep(5);
     sleep(5);
     fprintf(1, "handler5 triggered\n");
