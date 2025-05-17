@@ -26,7 +26,7 @@ int siginit(struct proc *p) {
     // Initialize the pending signal set to empty
     p->signal.sigpending = 0;
 
-    return 0;
+     return 0;
 }
 
 int siginit_fork(struct proc *parent, struct proc *child) {
@@ -39,7 +39,7 @@ int siginit_fork(struct proc *parent, struct proc *child) {
     child->signal.sigmask = parent->signal.sigmask;
     child->signal.sigpending = 0;  // Clear pending signals for the child
 
-    return 0;
+     return 0;
 }
 
 int siginit_exec(struct proc *p) {
@@ -56,7 +56,7 @@ int siginit_exec(struct proc *p) {
     }
     p->signal.sigpending = 0;
 
-    return 0;
+     return 0;
 }
 
 static void save_context(struct proc *p, struct ucontext *uc) {
@@ -175,8 +175,10 @@ int do_signal(void) {
                     // Ignore the signal
                     p->signal.sigpending &= ~(1ULL << i);
                 } else {
+                    //如果信号有用户定义的处理程序，设置上下文并跳转到处理程序
                     // User-defined handler
                     // Calculate new stack pointer
+                    p->signal.sigpending &= ~(1ULL << i);
                     uint64 new_sp = (p->trapframe->sp - (sizeof(struct ucontext) + sizeof(siginfo_t))) & ~0xF;
                     if (!IS_USER_VA(new_sp) || !IS_USER_VA(new_sp + sizeof(struct ucontext) + sizeof(siginfo_t))) {
                         return -1;
@@ -185,8 +187,6 @@ int do_signal(void) {
                     acquire(&p->mm->lock);
                     
                     struct ucontext kuc;
-                    // Update signal mask - block the current signal and any signals specified in sa_mask
-                    p->signal.sigmask |= (1ULL << (i-1));
                     kuc.uc_sigmask = initial_mask;  // 使用保存的初始掩码
 
                     // Save current context
@@ -214,8 +214,10 @@ int do_signal(void) {
                     p->trapframe->sp = new_sp;               // New stack pointer
                     p->trapframe->epc = (uint64)p->signal.sa[i].sa_sigaction; // Jump to signal handler
                     
+                    // Update signal mask - block the current signal and any signals specified in sa_mask
+                    p->signal.sigmask |= (1ULL << (i)) | p->signal.sa[i].sa_mask;;
                     // Clear pending signal
-                    p->signal.sigpending &= ~(1ULL << i);
+                    //  p->signal.sigpending &= ~(1ULL << i);
                     
                     // Release memory lock after we're done with user memory
                     release(&p->mm->lock);
@@ -223,12 +225,12 @@ int do_signal(void) {
             }
         }
     }
-    return 0;
+     return 0;
 }
 
 // syscall handlers:
 //  sys_* functions are called by syscall.c
-
+//  sys_sigaction 用于设置或获取指定信号的处理方式，注册信号处理程序的功能
 int sys_sigaction(int signo, const sigaction_t __user *act, sigaction_t __user *oldact) {
     if (signo <= 0 || signo >= _NSIG) {
         return -1;  // Invalid signal number
@@ -265,18 +267,17 @@ int sys_sigaction(int signo, const sigaction_t __user *act, sigaction_t __user *
         p->signal.sa[signo] = tmp;
     }
 
-    return 0;
+     return 0;
 }
 
 int sys_sigreturn() {
     struct proc *p = curr_proc();
+    //计算上下文在用户栈中的位置
     struct ucontext *uc = (struct ucontext *)(p->trapframe->sp + sizeof(siginfo_t)); 
-    
+    // Restore context，将trapframe的内容保存到到kuc中
+    struct ucontext kuc;
     // Acquire memory lock before accessing user memory
     acquire(&p->mm->lock);
-    
-    // Restore context
-    struct ucontext kuc;
     if (copy_from_user(p->mm, (char *)&kuc, (uint64)(p->trapframe->sp + sizeof(siginfo_t)), sizeof(struct ucontext)) < 0) {
         release(&p->mm->lock);
         return -1;
@@ -286,53 +287,55 @@ int sys_sigreturn() {
         release(&p->mm->lock);
         return -1;
     }
+    
     p->signal.sigmask = kuc.uc_sigmask;
 
+    
     // Release memory lock after we're done with user memory
     release(&p->mm->lock);
 
-    return 0;
+     return 0;
 }
 
 int sys_sigprocmask(int how, const sigset_t __user *set, sigset_t __user *oldset) {
-    struct proc *p = curr_proc();
-    printf("sigprocmask: Current mask: %x\n", p->signal.sigmask);
-    if (oldset) {
-        // Copy the old mask to user-space
-        acquire(&p->mm->lock);
-        int ok = copy_to_user(p->mm, (uint64)oldset, (char *)&p->signal.sigmask, sizeof(sigset_t));
-        release(&p->mm->lock);
-        if (ok < 0) return -1;
-    }
+    // struct proc *p = curr_proc();
+    // printf("sigprocmask: Current mask: %x\n", p->signal.sigmask);
+    // if (oldset) {
+    //     // Copy the old mask to user-space
+    //     acquire(&p->mm->lock);
+    //     int ok = copy_to_user(p->mm, (uint64)oldset, (char *)&p->signal.sigmask, sizeof(sigset_t));
+    //     release(&p->mm->lock);
+    //     if (ok < 0) return -1;
+    // }
 
-    if (set) {
-        sigset_t new_mask;
-        acquire(&p->mm->lock);
-        int ok = copy_from_user(p->mm, (char *)&new_mask, (uint64)set, sizeof(sigset_t));
-        release(&p->mm->lock);
-        if (ok < 0) return -1;
+    // if (set) {
+    //     sigset_t new_mask;
+    //     acquire(&p->mm->lock);
+    //     int ok = copy_from_user(p->mm, (char *)&new_mask, (uint64)set, sizeof(sigset_t));
+    //     release(&p->mm->lock);
+    //     if (ok < 0) return -1;
 
-        // SIGKILL and SIGSTOP cannot be blocked
-        new_mask &= ~((1ULL << SIGKILL) | (1ULL << SIGSTOP));
-        printf("sigprocmask: Setting new mask: %x (how: %d)\n", new_mask, how);
+    //     // SIGKILL and SIGSTOP cannot be blocked
+    //     new_mask &= ~((1ULL << SIGKILL) | (1ULL << SIGSTOP));
+    //     printf("sigprocmask: Setting new mask: %x (how: %d)\n", new_mask, how);
 
-        switch (how) {
-            case SIG_BLOCK:
-                p->signal.sigmask |= new_mask;  // Block the specified signals
-                break;
-            case SIG_UNBLOCK:
-                p->signal.sigmask &= ~new_mask;  // Unblock the specified signals
-                break;
-            case SIG_SETMASK:
-                p->signal.sigmask = new_mask;  // Set the signal mask to the specified mask
-                break;
-            default:
-                return -1;  // Invalid action
-        }
-        printf("sigprocmask: Final mask: %x\n", p->signal.sigmask);
-    }
+    //     switch (how) {
+    //         case SIG_BLOCK:
+    //             p->signal.sigmask |= new_mask;  // Block the specified signals
+    //             break;
+    //         case SIG_UNBLOCK:
+    //             p->signal.sigmask &= ~new_mask;  // Unblock the specified signals
+    //             break;
+    //         case SIG_SETMASK:
+    //             p->signal.sigmask = new_mask;  // Set the signal mask to the specified mask
+    //             break;
+    //         default:
+    //             return -1;  // Invalid action
+    //     }
+    //     printf("sigprocmask: Final mask: %x\n", p->signal.sigmask);
+    // }
 
-    return 0;
+     return 0;
 }
 
 int sys_sigpending(sigset_t __user *set) {
@@ -373,5 +376,5 @@ int sys_sigkill(int pid, int signo, int code) {
     target->signal.sigpending |= (1ULL << signo);
     release(&target->lock);
 
-    return 0;
+     return 0;
 }

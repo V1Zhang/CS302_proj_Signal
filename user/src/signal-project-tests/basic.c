@@ -57,6 +57,7 @@ void basic3(char* s) {
     int pid = fork();
     if (pid == 0) {
         // child
+        //可以自定义传给child的信号的action
         sigaction_t sa = {
             .sa_sigaction = handler3,
             .sa_restorer  = sigreturn,
@@ -131,6 +132,7 @@ void handler5(int signo, siginfo_t* info, void* ctx2) {
 //  after the signal handler returns, the signal should be unblocked.
 //   then, the signal handler should be called again. (5 times)
 // set handler for SIGUSR0, kernel should block it from re-entrance.
+//测试信号处理程序的递归或重复调用
 void basic5(char* s) {
     int pid = fork();
     if (pid == 0) {
@@ -171,6 +173,7 @@ void handler6_2(int signo, siginfo_t* info, void* ctx2) {
 }
 
 // signal handler can be nested.
+//测试嵌套调用功能，即在一个信号处理时，能否接受并处理另一个不同类型的信号
 void basic6(char* s) {
     int pid = fork();
     if (pid == 0) {
@@ -217,12 +220,14 @@ void handler7(int signo, siginfo_t* info, void* ctx2) {
 
 void handler7_2(int signo, siginfo_t* info, void* ctx2) {
     assert(signo == SIGUSR1);
+    printf("handler7_flag = %d\n", handler7_flag);
     assert(handler7_flag == 2);
     handler7_flag = 3;
     fprintf(1, "handler7_2 triggered due to %d\n", signo);
 }
 
 // signal handler can be nested.
+//测试信号屏蔽和信号排队功能，关注在处理一个信号的时候如何显示屏蔽特定的信号。
 void basic7(char* s) {
     int pid = fork();
     if (pid == 0) {
