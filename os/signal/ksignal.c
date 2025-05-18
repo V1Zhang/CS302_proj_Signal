@@ -298,42 +298,42 @@ int sys_sigreturn() {
 }
 
 int sys_sigprocmask(int how, const sigset_t __user *set, sigset_t __user *oldset) {
-    // struct proc *p = curr_proc();
-    // printf("sigprocmask: Current mask: %x\n", p->signal.sigmask);
-    // if (oldset) {
-    //     // Copy the old mask to user-space
-    //     acquire(&p->mm->lock);
-    //     int ok = copy_to_user(p->mm, (uint64)oldset, (char *)&p->signal.sigmask, sizeof(sigset_t));
-    //     release(&p->mm->lock);
-    //     if (ok < 0) return -1;
-    // }
+    struct proc *p = curr_proc();
+    printf("sigprocmask: Current mask: %x\n", p->signal.sigmask);
+    if (oldset) {
+        // Copy the old mask to user-space
+        acquire(&p->mm->lock);
+        int ok = copy_to_user(p->mm, (uint64)oldset, (char *)&p->signal.sigmask, sizeof(sigset_t));
+        release(&p->mm->lock);
+        if (ok < 0) return -1;
+    }
 
-    // if (set) {
-    //     sigset_t new_mask;
-    //     acquire(&p->mm->lock);
-    //     int ok = copy_from_user(p->mm, (char *)&new_mask, (uint64)set, sizeof(sigset_t));
-    //     release(&p->mm->lock);
-    //     if (ok < 0) return -1;
+    if (set) {
+        sigset_t new_mask;
+        acquire(&p->mm->lock);
+        int ok = copy_from_user(p->mm, (char *)&new_mask, (uint64)set, sizeof(sigset_t));
+        release(&p->mm->lock);
+        if (ok < 0) return -1;
 
-    //     // SIGKILL and SIGSTOP cannot be blocked
-    //     new_mask &= ~((1ULL << SIGKILL) | (1ULL << SIGSTOP));
-    //     printf("sigprocmask: Setting new mask: %x (how: %d)\n", new_mask, how);
+        // SIGKILL and SIGSTOP cannot be blocked
+        new_mask &= ~((1ULL << SIGKILL) | (1ULL << SIGSTOP));
+        printf("sigprocmask: Setting new mask: %x (how: %d)\n", new_mask, how);
 
-    //     switch (how) {
-    //         case SIG_BLOCK:
-    //             p->signal.sigmask |= new_mask;  // Block the specified signals
-    //             break;
-    //         case SIG_UNBLOCK:
-    //             p->signal.sigmask &= ~new_mask;  // Unblock the specified signals
-    //             break;
-    //         case SIG_SETMASK:
-    //             p->signal.sigmask = new_mask;  // Set the signal mask to the specified mask
-    //             break;
-    //         default:
-    //             return -1;  // Invalid action
-    //     }
-    //     printf("sigprocmask: Final mask: %x\n", p->signal.sigmask);
-    // }
+        switch (how) {
+            case SIG_BLOCK:
+                p->signal.sigmask |= new_mask;  // Block the specified signals
+                break;
+            case SIG_UNBLOCK:
+                p->signal.sigmask &= ~new_mask;  // Unblock the specified signals
+                break;
+            case SIG_SETMASK:
+                p->signal.sigmask = new_mask;  // Set the signal mask to the specified mask
+                break;
+            default:
+                return -1;  // Invalid action
+        }
+        printf("sigprocmask: Final mask: %x\n", p->signal.sigmask);
+    }
 
      return 0;
 }
