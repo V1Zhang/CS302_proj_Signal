@@ -14,12 +14,15 @@
 #define SIGCONT 8
 #define SIGSEGV 9
 #define SIGINT  10
+#define SIGALRM 11
 
 #define SIGMIN SIGUSR0
-#define SIGMAX SIGINT
+#define SIGMAX SIGALRM
 
-#define _NSIG 11
+#define _NSIG 12
 #define sigmask(signo) (1 << (signo))
+
+
 
 typedef uint64 sigset_t;
 typedef struct sigaction sigaction_t;

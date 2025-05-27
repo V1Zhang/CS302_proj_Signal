@@ -28,6 +28,8 @@ void stdout_nobuf(void);
 void *malloc(uint);
 void free(void *);
 
+unsigned int alarm(unsigned int seconds);
+
 // assert
 #define _STRINGIFY(s) #s
 #define STRINGIFY(s)  _STRINGIFY(s)
