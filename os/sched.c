@@ -90,7 +90,7 @@ void scheduler() {
         assert(holding(&p->lock));  // whoever switch to us must acquire p->lock
         c->proc = NULL;
 
-        if (p->state == RUNNABLE) {
+        if (p->state == RUNNABLE && !p->stopped) {
             add_task(p);
         }
         release(&p->lock);

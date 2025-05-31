@@ -169,6 +169,32 @@ int64 sys_write(int fd, uint64 __user va, uint len) {
     return user_console_write(va, len);
 }
 
+uint64 sys_alarm(void) {
+    int seconds = curr_proc()->trapframe->a0;
+    if (seconds < 0)
+        return -1;
+
+    struct proc *p = curr_proc();
+    uint64 remaining = 0;
+
+    acquire(&tickslock);
+    if (p->alarmticks > ticks)
+        remaining = (p->alarmticks - ticks) / 100;
+    else
+        remaining = 0;
+
+    if (seconds == 0)
+        p->alarmticks = 0;
+    else
+        p->alarmticks = ticks + seconds * 100;
+    release(&tickslock);
+
+    printf("alarm set: %d ticks\n", curr_proc()->alarmticks);
+    printf("[alarm syscall] pid %d: alarm set to %d ticks (current %d)\n", p->pid, p->alarmticks, ticks);
+
+    return remaining;
+}
+
 void syscall() {
     struct trapframe *trapframe = curr_proc()->trapframe;
     int id                      = trapframe->a7;
@@ -232,6 +258,9 @@ void syscall() {
             break;
         case SYS_sigpending:
             ret = sys_sigpending((sigset_t *)args[0]);
+            break;
+        case SYS_alarm:
+            ret = sys_alarm();
             break;
         default:
             ret = -1;
