@@ -424,7 +424,6 @@ void basic31(char* s) {
 
 
 volatile int stop_cont_flag = 0;
-volatile int stop_cont_pid = 0;
 
 void handler_cont(int signo, siginfo_t* info, void* ctx2) {
     assert(signo == SIGCONT);
@@ -464,7 +463,6 @@ void basic34(char* s) {
 
         // Signal parent that we're ready
         stop_cont_flag = 1;
-        stop_cont_pid = getpid();
 
         // Loop until handler_cont sets flag to 2
         fprintf(1, "Child process running, waiting for signals\n");
