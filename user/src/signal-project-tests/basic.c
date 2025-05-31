@@ -420,3 +420,91 @@ void basic31(char* s) {
         assert_eq(ret, 202);
     }
 }
+
+
+volatile int stop_cont_flag = 0;
+volatile int stop_cont_pid = 0;
+
+void handler_cont(int signo, siginfo_t* info, void* ctx2) {
+    assert(signo == SIGCONT);
+    fprintf(1, "[PID %d] Waiting: stop_cont_flag = %d (expecting 1)\n", getpid(), stop_cont_flag);
+    assert(stop_cont_flag == 1);
+    fprintf(1, "SIGCONT handler triggered\n");
+    stop_cont_flag = -1;
+    
+}
+void handler34(int signo, siginfo_t* info, void* ctx2) {
+    assert(signo == SIGUSR0);
+    fprintf(1, "[PID %d] Waiting: stop_cont_flag = %d \n", getpid(), stop_cont_flag);
+    fprintf(1, "handler34 triggered due to %d boooooom!!\n", signo);
+    stop_cont_flag = stop_cont_flag+1;
+}
+
+// Test SIGSTOP and SIGCONT functionality
+// Tests that SIGSTOP pauses process execution and SIGCONT resumes it
+void basic34(char* s) {
+    int pid = fork();
+    if (pid == 0) {
+        // Child process
+        // Register handler for SIGCONT
+        sigaction_t sa = {
+            .sa_sigaction = handler_cont,
+            .sa_restorer  = sigreturn,
+        };
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGCONT, &sa, 0);
+
+        sigaction_t sa1 = {
+            .sa_sigaction = handler34,
+            .sa_restorer  = sigreturn,
+        };
+        sigemptyset(&sa1.sa_mask);
+        sigaction(SIGUSR0, &sa1, 0);
+
+        // Signal parent that we're ready
+        stop_cont_flag = 1;
+        stop_cont_pid = getpid();
+
+        // Loop until handler_cont sets flag to 2
+        fprintf(1, "Child process running, waiting for signals\n");
+        
+        while (stop_cont_flag != -1) {
+            // Keep printing to show process is running
+            if (stop_cont_flag == 1) {
+                fprintf(1, "Child process start running\n");
+                sleep(10);
+            } 
+        }
+        
+        exit(200);
+    } else {
+        // Parent process
+        fprintf(1, "Parent waiting for child to initialize\n");
+        
+        // Wait for child to set flag
+        sleep(50);
+        
+        fprintf(1, "Parent sending SIGSTOP to child\n");
+        // Send SIGSTOP to child process
+        sigkill(pid, SIGSTOP, 0);
+        sleep(5);
+        // Check if process is actually stopped
+        // We can verify this by trying to send a regular signal and seeing if it's processed
+        fprintf(1, "Sending test signal to stopped process\n");
+        sigkill(pid, SIGUSR0, 0);
+        sleep(5);
+        
+        // If child was truly stopped, stop_cont_flag should still be 1
+        
+        fprintf(1, "Parent sending SIGCONT to child\n");
+        // Resume the child process
+        sigkill(pid, SIGCONT, 0);
+        
+        // Wait for child to complete
+        int ret;
+        wait(0, &ret);
+        assert_eq(ret, 200);
+        
+        fprintf(1, "SIGSTOP/SIGCONT test passed\n");
+    }
+}
