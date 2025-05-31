@@ -37,6 +37,29 @@ static int handle_intr(void) {
             wakeup(&ticks);
             release(&tickslock);
         }
+
+        for (int i = 0; i < NPROC; ++i) {
+            struct proc *p = pool[i];
+            if (!p) continue;
+        
+            acquire(&p->lock);
+            int should_send = 0;
+            int pid = p->pid;
+
+            acquire(&tickslock);
+            if (p->alarmticks > 0 && ticks >= p->alarmticks) {
+                p->alarmticks = 0;
+                should_send = 1;
+            }
+            release(&tickslock);
+            release(&p->lock);
+
+            if (should_send) {
+                printf("[kernel] deliver SIGALRM to pid %d at ticks %d\n", pid, ticks);
+                sys_sigkill(pid, SIGALRM, 0);
+            }
+        }
+
         set_next_timer();
         return 1;
     } else if (code == SupervisorExternal) {

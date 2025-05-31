@@ -57,6 +57,7 @@ void basic3(char* s) {
     int pid = fork();
     if (pid == 0) {
         // child
+        //可以自定义传给child的信号的action
         sigaction_t sa = {
             .sa_sigaction = handler3,
             .sa_restorer  = sigreturn,
@@ -115,8 +116,10 @@ void handler5(int signo, siginfo_t* info, void* ctx2) {
     nonreentrace = 1;
     sleep(5);
     sleep(5);
-    if (handler5_cnt < 5)
+    if (handler5_cnt < 5){
+        fprintf(1, "handler5: sending SIGUSR0 to self\n");
         sigkill(getpid(), SIGUSR0, 0);
+    }
     sleep(5);
     sleep(5);
     fprintf(1, "handler5 triggered\n");
@@ -129,6 +132,7 @@ void handler5(int signo, siginfo_t* info, void* ctx2) {
 //  after the signal handler returns, the signal should be unblocked.
 //   then, the signal handler should be called again. (5 times)
 // set handler for SIGUSR0, kernel should block it from re-entrance.
+//测试信号处理程序的递归或重复调用
 void basic5(char* s) {
     int pid = fork();
     if (pid == 0) {
@@ -169,6 +173,7 @@ void handler6_2(int signo, siginfo_t* info, void* ctx2) {
 }
 
 // signal handler can be nested.
+//测试嵌套调用功能，即在一个信号处理时，能否接受并处理另一个不同类型的信号
 void basic6(char* s) {
     int pid = fork();
     if (pid == 0) {
@@ -215,12 +220,14 @@ void handler7(int signo, siginfo_t* info, void* ctx2) {
 
 void handler7_2(int signo, siginfo_t* info, void* ctx2) {
     assert(signo == SIGUSR1);
+    printf("handler7_flag = %d\n", handler7_flag);
     assert(handler7_flag == 2);
     handler7_flag = 3;
     fprintf(1, "handler7_2 triggered due to %d\n", signo);
 }
 
 // signal handler can be nested.
+//测试信号屏蔽和信号排队功能，关注在处理一个信号的时候如何显示屏蔽特定的信号。
 void basic7(char* s) {
     int pid = fork();
     if (pid == 0) {
@@ -361,5 +368,144 @@ void basic20(char *s) {
         int ret;
         wait(0, &ret);
         assert(ret == 1); // child should not be terminated by SIGUSR0
+    }
+}
+
+volatile int alarm_flag = 0;
+
+void handler31(int signo, siginfo_t* info, void* ctx) {
+    assert(signo == SIGALRM);
+    alarm_flag = 1;
+    fprintf(1, "SIGALRM received at alarm_flag = %d\n", alarm_flag);
+    sigreturn();
+}
+
+void basic31(char* s) {
+    int pid = fork();
+    if (pid == 0) {
+        // child
+        sigaction_t sa = {
+            .sa_sigaction = handler31,
+            .sa_restorer  = sigreturn,
+        };
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGALRM, &sa, 0);
+
+        // 第一次设置：3秒后触发
+        unsigned int remain = alarm(3);
+        assert_eq(remain, 0); // 应该没有之前的 alarm
+
+        // 等待4秒，alarm 应该触发
+        for (int i = 0; i < 4; i++) sleep(100);
+        assert_eq(alarm_flag, 1);
+
+        // 第二次设置：5秒后触发
+        alarm_flag = 0;
+        remain = alarm(5);
+        assert_eq(remain, 0); // 上一个 alarm 已完成，返回0
+
+        // 等待2秒后取消
+        sleep(200);
+        remain = alarm(0);
+        assert(remain >= 2 && remain <= 5); // 应该有剩余2~5秒
+
+        // 再等3秒，SIGALRM 不应触发
+        sleep(300);
+        assert_eq(alarm_flag, 0); // 未触发信号
+
+        exit(202);
+    } else {
+        // parent
+        int ret;
+        wait(0, &ret);
+        assert_eq(ret, 202);
+    }
+}
+
+
+volatile int stop_cont_flag = 0;
+volatile int stop_cont_pid = 0;
+
+void handler_cont(int signo, siginfo_t* info, void* ctx2) {
+    assert(signo == SIGCONT);
+    fprintf(1, "[PID %d] Waiting: stop_cont_flag = %d (expecting 1)\n", getpid(), stop_cont_flag);
+    assert(stop_cont_flag == 1);
+    fprintf(1, "SIGCONT handler triggered\n");
+    stop_cont_flag = -1;
+    
+}
+void handler34(int signo, siginfo_t* info, void* ctx2) {
+    assert(signo == SIGUSR0);
+    fprintf(1, "[PID %d] Waiting: stop_cont_flag = %d \n", getpid(), stop_cont_flag);
+    fprintf(1, "handler34 triggered due to %d boooooom!!\n", signo);
+    stop_cont_flag = stop_cont_flag+1;
+}
+
+// Test SIGSTOP and SIGCONT functionality
+// Tests that SIGSTOP pauses process execution and SIGCONT resumes it
+void basic34(char* s) {
+    int pid = fork();
+    if (pid == 0) {
+        // Child process
+        // Register handler for SIGCONT
+        sigaction_t sa = {
+            .sa_sigaction = handler_cont,
+            .sa_restorer  = sigreturn,
+        };
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGCONT, &sa, 0);
+
+        sigaction_t sa1 = {
+            .sa_sigaction = handler34,
+            .sa_restorer  = sigreturn,
+        };
+        sigemptyset(&sa1.sa_mask);
+        sigaction(SIGUSR0, &sa1, 0);
+
+        // Signal parent that we're ready
+        stop_cont_flag = 1;
+        stop_cont_pid = getpid();
+
+        // Loop until handler_cont sets flag to 2
+        fprintf(1, "Child process running, waiting for signals\n");
+        
+        while (stop_cont_flag != -1) {
+            // Keep printing to show process is running
+            if (stop_cont_flag == 1) {
+                fprintf(1, "Child process start running\n");
+                sleep(10);
+            } 
+        }
+        
+        exit(200);
+    } else {
+        // Parent process
+        fprintf(1, "Parent waiting for child to initialize\n");
+        
+        // Wait for child to set flag
+        sleep(50);
+        
+        fprintf(1, "Parent sending SIGSTOP to child\n");
+        // Send SIGSTOP to child process
+        sigkill(pid, SIGSTOP, 0);
+        sleep(5);
+        // Check if process is actually stopped
+        // We can verify this by trying to send a regular signal and seeing if it's processed
+        fprintf(1, "Sending test signal to stopped process\n");
+        sigkill(pid, SIGUSR0, 0);
+        sleep(5);
+        
+        // If child was truly stopped, stop_cont_flag should still be 1
+        
+        fprintf(1, "Parent sending SIGCONT to child\n");
+        // Resume the child process
+        sigkill(pid, SIGCONT, 0);
+        
+        // Wait for child to complete
+        int ret;
+        wait(0, &ret);
+        assert_eq(ret, 200);
+        
+        fprintf(1, "SIGSTOP/SIGCONT test passed\n");
     }
 }

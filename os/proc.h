@@ -56,6 +56,7 @@ struct proc {
     int exit_code;
     void *sleep_chan;
     int killed;
+    int stopped; //增加暂停的flag
 
     struct proc *parent;  // Parent process
 
@@ -69,6 +70,7 @@ struct proc {
 
     // Project signal:
     struct ksignal signal;
+    uint alarmticks;
 };
 
 static inline int cpuid() {
