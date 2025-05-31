@@ -201,3 +201,46 @@ sleep(n) 用户态调用 单位是tick 1 tick = 10ms 或根据时钟频率设定
 > **运行截图**
 >
 > ![screenshot](img/checkpoint1-3.png)
+
+### Optional basic 34 SIGSTOP和SIGCONT处理
+
+
+
+#### 做法：
+
+1. 在**do_signal（）**里面增加对sigcont和sigstop信号的处理逻辑c
+
+   ```c
+    // 处理 SIGCONT 信号
+       if (p->signal.sigpending & (1ULL << SIGCONT)) {
+           // 如果进程当前被停止，则恢复它
+           if (p->stopped) {
+               p->stopped = 0;
+           }     
+       }
+       //若进程stopped，则直接返回
+       if (p->stopped || !p->signal.sigpending) {
+           return 0;
+       }
+   ```
+
+   2. 在**scheduler**() 方法里面增加对flag stop为1的进程进行屏蔽
+
+      ```c
+      if (p->state == RUNNABLE && !p->stopped) {
+                  add_task(p);
+              }
+      ```
+
+#### 样例设计：
+
+流程： 父进程fork子进程--》 子进程开始跑 --》父进程给子进程发SIGSTOP --》 父进程给子进程发SIGUSR0（正确的话应该不执行）--》 父进程给子进程发SIGCONT -》子进程执行SIGCONT 注册的handler_cont函数 -》退出
+
+
+开始时 若不对SIGSTOP和SIGCONT 处理，子进程会运行SIGUSR0注册的handeler34函数，因此会报错：
+
+![image2](img\basic34_2.png)
+
+正确处理SIGSTOP和SIGCONT 逻辑后，运行结果为：
+
+![image1](img\basic34_1.png)
