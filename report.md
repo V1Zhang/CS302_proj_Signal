@@ -236,11 +236,11 @@ sleep(n) 用户态调用 单位是tick 1 tick = 10ms 或根据时钟频率设定
 
 开始时 若不对SIGSTOP和SIGCONT 处理，子进程会运行SIGUSR0注册的handeler34函数，因此会报错：
 
-![image2](img\basic34_2.png)
+![image2](img/basic34_2.png)
 
 正确处理SIGSTOP和SIGCONT 逻辑后，运行结果为：
 
-![image1](img\basic34_1.png)
+![image1](img/basic34_1.png)
 
 ## 上板
 
