@@ -26,6 +26,8 @@ int siginit(struct proc *p) {
     // Initialize the pending signal set to empty
     p->signal.sigpending = 0;
 
+    p->stopped = 0;  
+
      return 0;
 }
 
@@ -39,6 +41,7 @@ int siginit_fork(struct proc *parent, struct proc *child) {
     child->signal.sigmask = parent->signal.sigmask;
     child->signal.sigpending = 0;  // Clear pending signals for the child
 
+    child->stopped = 0;
      return 0;
 }
 
@@ -148,6 +151,18 @@ int do_signal(void) {
     sigset_t initial_mask = p->signal.sigmask;
     if (!p->signal.sigpending)
         return 0;
+
+    // 处理 SIGCONT 信号
+    if (p->signal.sigpending & (1ULL << SIGCONT)) {
+        // 如果进程当前被停止，则恢复它
+        if (p->stopped) {
+            p->stopped = 0;
+        }     
+    }
+    //若进程stopped，则直接返回
+    if (p->stopped || !p->signal.sigpending) {
+        return 0;
+    }
     
     // Check each signal
     for (int i = 1; i < _NSIG; i++) {
@@ -158,16 +173,26 @@ int do_signal(void) {
                 return -1;
             }
 
+            if (i == SIGSTOP) {
+                // 设置进程为停止状态
+                p->stopped = 1;
+                
+                // 清除挂起的 SIGSTOP
+                p->signal.sigpending &= ~(1ULL << SIGSTOP);
+                // 返回 0，让进程停止但不终止
+                return 0;
+             }
+
             // Check if signal is blocked
             if (!(p->signal.sigmask & (1ULL << i))) {
                 // Handle the signal
                 if (p->signal.sa[i].sa_sigaction == SIG_DFL) {
                     // Default handling
-                    if (i == SIGSTOP) {
-                        // SIGSTOP cannot be caught or ignored
-                        p->killed = 1;
-                        return -1;
-                    }
+                    // if (i == SIGSTOP) {
+                    //     // SIGSTOP cannot be caught or ignored
+                    //     p->killed = 1;
+                    //     return -1;
+                    // }
                     // For other signals with SIG_DFL, terminate the process
                     setkilled(p, -10 - i);  // Set exit code to -10 - signal_number
                     return -1;
@@ -373,7 +398,15 @@ int sys_sigkill(int pid, int signo, int code) {
     }
 
     // Add the signal to the target process's pending signals
-    target->signal.sigpending |= (1ULL << signo);
+    if (target->stopped) {
+        //只能添加sigcont
+        if (signo == SIGCONT) {
+            target->signal.sigpending |= (1ULL << signo);
+        } 
+    } else {
+        // 如果进程未停止，所有信号都正常添加到挂起集
+        target->signal.sigpending |= (1ULL << signo);
+    }
     release(&target->lock);
 
      return 0;

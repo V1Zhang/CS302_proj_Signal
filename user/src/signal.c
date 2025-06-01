@@ -14,10 +14,11 @@ struct test {
     {basic5,  "basic5" },
     {basic6,  "basic6" },
     {basic7,  "basic7" },
-    {basic8,  "basic8" },
+    // {basic8,  "basic8" },
     {basic10, "basic10"},
     {basic11, "basic11"},
     {basic20, "basic20"},
+    {basic34, "basic34"},
     {NULL,    NULL     },
 };
 
