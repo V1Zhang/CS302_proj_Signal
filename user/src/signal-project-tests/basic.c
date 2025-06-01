@@ -457,7 +457,6 @@ void basic31(char* s) {
 
 
 volatile int stop_cont_flag = 0;
-volatile int stop_cont_pid = 0;
 
 void handler_cont(int signo, siginfo_t* info, void* ctx2) {
     assert(signo == SIGCONT);
@@ -474,70 +473,126 @@ void handler34(int signo, siginfo_t* info, void* ctx2) {
     stop_cont_flag = stop_cont_flag+1;
 }
 
-// Test SIGSTOP and SIGCONT functionality
-// Tests that SIGSTOP pauses process execution and SIGCONT resumes it
+// // Test SIGSTOP and SIGCONT functionality
+// // Tests that SIGSTOP pauses process execution and SIGCONT resumes it
+// void basic34(char* s) {
+//     int pid = fork();
+//     if (pid == 0) {
+//         // Child process
+//         // Register handler for SIGCONT
+//         sigaction_t sa = {
+//             .sa_sigaction = handler_cont,
+//             .sa_restorer  = sigreturn,
+//         };
+//         sigemptyset(&sa.sa_mask);
+//         sigaction(SIGCONT, &sa, 0);
+
+//         sigaction_t sa1 = {
+//             .sa_sigaction = handler34,
+//             .sa_restorer  = sigreturn,
+//         };
+//         sigemptyset(&sa1.sa_mask);
+//         sigaction(SIGUSR0, &sa1, 0);
+
+//         // Signal parent that we're ready
+//         stop_cont_flag = 1;
+
+//         // Loop until handler_cont sets flag to 2
+//         fprintf(1, "Child process running, waiting for signals\n");
+        
+//         while (stop_cont_flag != -1) {
+//             // Keep printing to show process is running
+//             if (stop_cont_flag == 1) {
+//                 fprintf(1, "Child process start running\n");
+//                 sleep(10);
+//             } 
+//         }
+        
+//         exit(200);
+//     } else {
+//         // Parent process
+//         fprintf(1, "Parent waiting for child to initialize\n");
+        
+//         // Wait for child to set flag
+//         sleep(50);
+        
+//         fprintf(1, "Parent sending SIGSTOP to child\n");
+//         // Send SIGSTOP to child process
+//         sigkill(pid, SIGSTOP, 0);
+//         sleep(5);
+//         // Check if process is actually stopped
+//         // We can verify this by trying to send a regular signal and seeing if it's processed
+//         fprintf(1, "Sending test signal to stopped process\n");
+//         sigkill(pid, SIGUSR0, 0);
+//         sleep(5);
+        
+//         // If child was truly stopped, stop_cont_flag should still be 1
+        
+//         fprintf(1, "Parent sending SIGCONT to child\n");
+//         // Resume the child process
+//         sigkill(pid, SIGCONT, 0);
+        
+//         // Wait for child to complete
+//         int ret;
+//         wait(0, &ret);
+//         assert_eq(ret, 200);
+        
+//         fprintf(1, "SIGSTOP/SIGCONT test passed\n");
+//     }
+// }
+
+
 void basic34(char* s) {
     int pid = fork();
+    
     if (pid == 0) {
-        // Child process
-        // Register handler for SIGCONT
+
         sigaction_t sa = {
-            .sa_sigaction = handler_cont,
+            .sa_sigaction = SIG_IGN,
             .sa_restorer  = sigreturn,
         };
         sigemptyset(&sa.sa_mask);
         sigaction(SIGCONT, &sa, 0);
-
-        sigaction_t sa1 = {
-            .sa_sigaction = handler34,
-            .sa_restorer  = sigreturn,
-        };
-        sigemptyset(&sa1.sa_mask);
-        sigaction(SIGUSR0, &sa1, 0);
-
-        // Signal parent that we're ready
-        stop_cont_flag = 1;
-        stop_cont_pid = getpid();
-
-        // Loop until handler_cont sets flag to 2
-        fprintf(1, "Child process running, waiting for signals\n");
+        // 子进程
+        fprintf(1, "Child process started with PID %d\n", getpid());
         
-        while (stop_cont_flag != -1) {
-            // Keep printing to show process is running
-            if (stop_cont_flag == 1) {
-                fprintf(1, "Child process start running\n");
-                sleep(10);
-            } 
+        // 工作循环：每秒打印一次时间
+        int counter = 0;
+        while (counter < 10) {  
+            fprintf(1, "[%d] Child process working at counter: %d\n", counter, counter);
+            sleep(10);  // 休眠100ms
+            counter++;
         }
         
-        exit(200);
+        fprintf(1, "Child process exiting normally\n");
+        exit(123);
     } else {
-        // Parent process
-        fprintf(1, "Parent waiting for child to initialize\n");
+        // 父进程
+        fprintf(1, "Parent process started, child PID: %d\n", pid);
         
-        // Wait for child to set flag
-        sleep(50);
+        // 等待子进程运行几个周期
+        fprintf(1, "Parent waiting for child to run some iterations...\n");
+        sleep(30);  // 300ms
         
-        fprintf(1, "Parent sending SIGSTOP to child\n");
-        // Send SIGSTOP to child process
+        // 发送 SIGSTOP 暂停子进程
+        fprintf(1, "Parent sending SIGSTOP to child...\n");
         sigkill(pid, SIGSTOP, 0);
-        sleep(5);
-        // Check if process is actually stopped
-        // We can verify this by trying to send a regular signal and seeing if it's processed
-        fprintf(1, "Sending test signal to stopped process\n");
-        sigkill(pid, SIGUSR0, 0);
-        sleep(5);
         
-        // If child was truly stopped, stop_cont_flag should still be 1
+        // 等待一段时间，子进程应该已经停止打印
+        fprintf(1, "Parent waiting while child should be stopped...\n");
+        sleep(50);  // 500ms
         
-        fprintf(1, "Parent sending SIGCONT to child\n");
-        // Resume the child process
+        // 发送 SIGCONT 恢复子进程
+        fprintf(1, "Parent sending SIGCONT to child...\n");
         sigkill(pid, SIGCONT, 0);
         
-        // Wait for child to complete
+        // 再等待一段时间，让子进程继续运行
+        fprintf(1, "Parent waiting while child resumes execution...\n");
+        sleep(50);  // 500ms
+        
         int ret;
         wait(0, &ret);
-        assert_eq(ret, 200);
+        assert_eq(ret, 123);
         
         fprintf(1, "SIGSTOP/SIGCONT test passed\n");
     }

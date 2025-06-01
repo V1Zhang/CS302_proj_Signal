@@ -41,7 +41,6 @@ int siginit_fork(struct proc *parent, struct proc *child) {
     child->signal.sigmask = parent->signal.sigmask;
     child->signal.sigpending = 0;  // Clear pending signals for the child
 
-    child->stopped = 0;
      return 0;
 }
 
@@ -152,18 +151,19 @@ int do_signal(void) {
     if (!p->signal.sigpending)
         return 0;
 
-    // 处理 SIGCONT 信号
-    if (p->signal.sigpending & (1ULL << SIGCONT)) {
-        // 如果进程当前被停止，则恢复它
-        if (p->stopped) {
-            p->stopped = 0;
-        }     
-    }
+    // // 处理 SIGCONT 信号Add commentMore actions
+    // if (p->signal.sigpending & (1ULL << SIGCONT)) {
+    //     // 如果进程当前被停止，则恢复它
+    //     if (p->stopped) {
+    //         p->stopped = 0;
+    //     }     
+    //     printf("received sigcont");
+    // }
     //若进程stopped，则直接返回
     if (p->stopped || !p->signal.sigpending) {
         return 0;
     }
-    
+
     // Check each signal
     for (int i = 1; i < _NSIG; i++) {
         if ((p->signal.sigpending & (1ULL << i)) && !(p->signal.sigmask & (1ULL << i))) {
@@ -176,10 +176,11 @@ int do_signal(void) {
             if (i == SIGSTOP) {
                 // 设置进程为停止状态
                 p->stopped = 1;
-                
+    
                 // 清除挂起的 SIGSTOP
                 p->signal.sigpending &= ~(1ULL << SIGSTOP);
                 // 返回 0，让进程停止但不终止
+                yield();
                 return 0;
              }
 
@@ -396,14 +397,16 @@ int sys_sigkill(int pid, int signo, int code) {
     if (!target) {
         return -1;  // Process not found
     }
-
-    // Add the signal to the target process's pending signals
     if (target->stopped) {
         //只能添加sigcont
         if (signo == SIGCONT) {
+            printf("receive sigcont\n");
+            target->stopped = 0;
             target->signal.sigpending |= (1ULL << signo);
+            target->state = RUNNABLE;
+            add_task(target);
         } 
-    } else {
+    }else {
         // 如果进程未停止，所有信号都正常添加到挂起集
         target->signal.sigpending |= (1ULL << signo);
     }

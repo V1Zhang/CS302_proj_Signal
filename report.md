@@ -30,7 +30,7 @@
 三、Signal 生命周期
 
 - 信号产生（sigkill）
-sigkill(pid, signo, code) 设置目标进程的 sigpending。
+  sigkill(pid, signo, code) 设置目标进程的 sigpending。
 
 - 信号交付（do_signal）
   - 每次从内核返回用户态（usertrap()）前调用 do_signal()：
@@ -201,3 +201,101 @@ sleep(n) 用户态调用 单位是tick 1 tick = 10ms 或根据时钟频率设定
 > **运行截图**
 >
 > ![screenshot](img/checkpoint1-3.png)
+
+### Optional basic 34 SIGSTOP和SIGCONT处理
+
+#### 做法
+
+1. 在**do_signal（）**里面增加对sigcont和sigstop信号的处理逻辑c
+
+   ```c
+    // 处理 SIGCONT 信号
+       if (p->signal.sigpending & (1ULL << SIGCONT)) {
+           // 如果进程当前被停止，则恢复它
+           if (p->stopped) {
+               p->stopped = 0;
+           }     
+       }
+       //若进程stopped，则直接返回
+       if (p->stopped || !p->signal.sigpending) {
+           return 0;
+       }
+   ```
+
+2. 在**scheduler**() 方法里面增加对flag stop为1的进程进行屏蔽
+
+      ```c
+      if (p->state == RUNNABLE && !p->stopped) {
+                  add_task(p);
+              }
+      ```
+
+#### 样例设计
+
+流程： 父进程fork子进程--》 子进程开始跑 --》父进程给子进程发SIGSTOP --》 父进程给子进程发SIGUSR0（正确的话应该不执行）--》 父进程给子进程发SIGCONT -》子进程执行SIGCONT 注册的handler_cont函数 -》退出
+
+开始时 若不对SIGSTOP和SIGCONT 处理，子进程会运行SIGUSR0注册的handeler34函数，因此会报错：
+
+![image2](img\basic34_2.png)
+
+正确处理SIGSTOP和SIGCONT 逻辑后，运行结果为：
+
+![image1](img\basic34_1.png)
+
+## 上板
+
+❗上板进入sh无法输入
+
+```c
+for (int i = 0; i < NPROC; ++i) {
+    struct proc *p = pool[i];
+    ...
+    if (p->alarmticks > 0 && ticks >= p->alarmticks) {
+        p->alarmticks = 0;
+        sys_sigkill(pid, SIGALRM, 0);
+    }
+}
+```
+
+无差别地对所有进程检测alarm，到时后就送 SIGALRM，但sh没注册 SIGALRM handler，SIGALRM 的默认行为是 terminate 导致sh被误杀了
+但是 为什么 qemu里正常？
+在 qemu中，timer、ticks、trap 都是模拟出来的，ticks 非常缓慢。而板子上的 CLINT 是真实硬件触发的时钟中断，tick 速度快很多。
+因此在qemu中，你没来得及触发SIGALRM，shell就正常跑了；
+在板子中，你刚起完shell，tick立刻走到，就杀掉了它。
+
+✅扫描所有用户态进程，但确保只处理那些：
+
+- 不是 NULL
+
+- 正在运行（可加状态判断）
+
+- 没被 kill
+
+- 设置了 alarmticks > 0
+
+- 没有误杀 shell 等进程
+
+```c
+if (p->state == UNUSED || p->killed || p->alarmticks == 0) {
+        release(&p->lock);
+        continue;
+    }
+```
+
+并把 alarmticks 检查逻辑也放到主核
+
+UsermodeTimer的testcase：[new basic31]
+
+1. 注册 SIGALRM 的信号处理函数。
+2. 调用 `alarm(5)` 注册一次 5s 后的 SIGALRM。并打印当前时间。
+3. 使CPU空转一段时间。
+4. SIGALRM 触发，控制流进入信号处理函数，在处理函数中打印当前时，并终止进程执
+行。
+
+SIGSTOP & SIGCONT的testcase： [new basic34]
+
+1. fork 得到父进程和子进程，子进程进入工作循环，每空转一段时间打印当前时间。
+2. 父进程发送 SIGSTOP 给子进程，子进程暂停执行，不再打印时间。
+3. 父进程 sleep 一段时间后，发送 SIGCONT 给子进程，子进程得以恢复执行。
+4. 子进程开始重新每隔一段时间打印当前时间。
+5. 父进程发送 SIGKILL 终止子进程的执行
