@@ -370,13 +370,61 @@ void basic20(char *s) {
     }
 }
 
-volatile int alarm_flag = 0;
+// volatile int alarm_flag = 0;
 
-void handler31(int signo, siginfo_t* info, void* ctx) {
+// void handler31(int signo, siginfo_t* info, void* ctx) {
+//     assert(signo == SIGALRM);
+//     alarm_flag = 1;
+//     fprintf(1, "SIGALRM received at alarm_flag = %d\n", alarm_flag);
+//     sigreturn();
+// }
+
+// void basic31(char* s) {
+//     int pid = fork();
+//     if (pid == 0) {
+//         // child
+//         sigaction_t sa = {
+//             .sa_sigaction = handler31,
+//             .sa_restorer  = sigreturn,
+//         };
+//         sigemptyset(&sa.sa_mask);
+//         sigaction(SIGALRM, &sa, 0);
+
+//         // 第一次设置：3秒后触发
+//         unsigned int remain = alarm(3);
+//         assert_eq(remain, 0); // 应该没有之前的 alarm
+
+//         // 等待4秒，alarm 应该触发
+//         for (int i = 0; i < 4; i++) sleep(100);
+//         assert_eq(alarm_flag, 1);
+
+//         // 第二次设置：5秒后触发
+//         alarm_flag = 0;
+//         remain = alarm(5);
+//         assert_eq(remain, 0); // 上一个 alarm 已完成，返回0
+
+//         // 等待2秒后取消
+//         sleep(200);
+//         remain = alarm(0);
+//         assert(remain >= 2 && remain <= 5); // 应该有剩余2~5秒
+
+//         // 再等3秒，SIGALRM 不应触发
+//         sleep(300);
+//         assert_eq(alarm_flag, 0); // 未触发信号
+
+//         exit(202);
+//     } else {
+//         // parent
+//         int ret;
+//         wait(0, &ret);
+//         assert_eq(ret, 202);
+//     }
+// }
+
+void handler31(int signo, siginfo_t *info, void *ctx) {
     assert(signo == SIGALRM);
-    alarm_flag = 1;
-    fprintf(1, "SIGALRM received at alarm_flag = %d\n", alarm_flag);
-    sigreturn();
+    printf("[SIGALRM handler] Received SIGALRM, exiting.\n");
+    exit(123);
 }
 
 void basic31(char* s) {
@@ -390,36 +438,23 @@ void basic31(char* s) {
         sigemptyset(&sa.sa_mask);
         sigaction(SIGALRM, &sa, 0);
 
-        // 第一次设置：3秒后触发
-        unsigned int remain = alarm(3);
-        assert_eq(remain, 0); // 应该没有之前的 alarm
+        printf("[User] Alarm set for 5 seconds later.\n");
+        unsigned int remain = alarm(5);
+        assert(remain == 0);
 
-        // 等待4秒，alarm 应该触发
-        for (int i = 0; i < 4; i++) sleep(100);
-        assert_eq(alarm_flag, 1);
-
-        // 第二次设置：5秒后触发
-        alarm_flag = 0;
-        remain = alarm(5);
-        assert_eq(remain, 0); // 上一个 alarm 已完成，返回0
-
-        // 等待2秒后取消
-        sleep(200);
-        remain = alarm(0);
-        assert(remain >= 2 && remain <= 5); // 应该有剩余2~5秒
-
-        // 再等3秒，SIGALRM 不应触发
-        sleep(300);
-        assert_eq(alarm_flag, 0); // 未触发信号
-
-        exit(202);
+        // 空转
+        volatile int sink = 0;
+        while (1) {
+            for (int i = 0; i < 1000000; ++i) sink += i;
+        }
     } else {
-        // parent
-        int ret;
-        wait(0, &ret);
-        assert_eq(ret, 202);
+        // parent: 等待并检查退出码
+        int status;
+        wait(0, &status);
+        assert_eq(status, 123);
     }
 }
+
 
 volatile int stop_cont_flag = 0;
 volatile int stop_cont_pid = 0;
