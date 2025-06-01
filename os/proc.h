@@ -70,6 +70,7 @@ struct proc {
 
     // Project signal:
     struct ksignal signal;
+    uint alarmticks;
 };
 
 static inline int cpuid() {
