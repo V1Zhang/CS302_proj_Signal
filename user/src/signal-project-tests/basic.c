@@ -506,3 +506,60 @@ void basic34(char* s) {
         fprintf(1, "SIGSTOP/SIGCONT test passed\n");
     }
 }
+
+
+void basic35(char* s) {
+    int pid = fork();
+    
+    if (pid == 0) {
+
+        sigaction_t sa = {
+            .sa_sigaction = SIG_IGN,
+            .sa_restorer  = sigreturn,
+        };
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGCONT, &sa, 0);
+        // 子进程
+        fprintf(1, "Child process started with PID %d\n", getpid());
+        
+        // 工作循环：每秒打印一次时间
+        int counter = 0;
+        while (counter < 10) {  
+            fprintf(1, "[%d] Child process working at counter: %d\n", counter, counter);
+            sleep(10);  // 休眠100ms
+            counter++;
+        }
+        
+        fprintf(1, "Child process exiting normally\n");
+        exit(123);
+    } else {
+        // 父进程
+        fprintf(1, "Parent process started, child PID: %d\n", pid);
+        
+        // 等待子进程运行几个周期
+        fprintf(1, "Parent waiting for child to run some iterations...\n");
+        sleep(30);  // 300ms
+        
+        // 发送 SIGSTOP 暂停子进程
+        fprintf(1, "Parent sending SIGSTOP to child...\n");
+        sigkill(pid, SIGSTOP, 0);
+        
+        // 等待一段时间，子进程应该已经停止打印
+        fprintf(1, "Parent waiting while child should be stopped...\n");
+        sleep(50);  // 500ms
+        
+        // 发送 SIGCONT 恢复子进程
+        fprintf(1, "Parent sending SIGCONT to child...\n");
+        sigkill(pid, SIGCONT, 0);
+        
+        // 再等待一段时间，让子进程继续运行
+        fprintf(1, "Parent waiting while child resumes execution...\n");
+        sleep(50);  // 500ms
+        
+        int ret;
+        wait(0, &ret);
+        assert_eq(ret, 123);
+        
+        fprintf(1, "SIGSTOP/SIGCONT test passed\n");
+    }
+}

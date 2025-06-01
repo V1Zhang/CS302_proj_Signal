@@ -151,13 +151,14 @@ int do_signal(void) {
     if (!p->signal.sigpending)
         return 0;
 
-    // 处理 SIGCONT 信号
-    if (p->signal.sigpending & (1ULL << SIGCONT)) {
-        // 如果进程当前被停止，则恢复它
-        if (p->stopped) {
-            p->stopped = 0;
-        }     
-    }
+    // // 处理 SIGCONT 信号
+    // if (p->signal.sigpending & (1ULL << SIGCONT)) {
+    //     // 如果进程当前被停止，则恢复它
+    //     if (p->stopped) {
+    //         p->stopped = 0;
+    //     }     
+    //     printf("received sigcont");
+    // }
     //若进程stopped，则直接返回
     if (p->stopped || !p->signal.sigpending) {
         return 0;
@@ -179,6 +180,7 @@ int do_signal(void) {
             // 清除挂起的 SIGSTOP
             p->signal.sigpending &= ~(1ULL << SIGSTOP);
             // 返回 0，让进程停止但不终止
+            yield();
             return 0;
          }
 
@@ -396,10 +398,14 @@ int sys_sigkill(int pid, int signo, int code) {
         return -1;  // Process not found
     }
 
-     if (target->stopped) {
+    if (target->stopped) {
         //只能添加sigcont
         if (signo == SIGCONT) {
+            printf("receive sigcont\n");
+            target->stopped = 0;
             target->signal.sigpending |= (1ULL << signo);
+            target->state = RUNNABLE;
+            add_task(target);
         } 
     } else {
         // 如果进程未停止，所有信号都正常添加到挂起集
